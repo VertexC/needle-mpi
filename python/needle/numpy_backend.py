@@ -28,6 +28,9 @@ class NumpyDevice(Device):
         arr.fill(fill_value)
         return arr
 
+    def fill_array(self, arr, other):
+        arr[:] = other[:]
+
     def randn(self, shape, dtype, mean=0.0, std=1.0):
         return np.random.normal(loc=mean, scale=std, size=shape).astype(dtype)
     
@@ -162,13 +165,13 @@ def exp(inputs, attrs):
 
 @register_numpy_compute("ReLU")
 def relu(inputs, attrs):
-    return np.maximum(inputs[0], 0)
+    return np.maximum(inputs[0], 0).astype(inputs[0].dtype)
 
 @register_numpy_compute("ReLUGrad")
 def relu(inputs, attrs):
     result = np.ones_like(inputs[0])
     result[np.where(inputs[0] <= 0)] = 0
-    return result
+    return result.astype(inputs[0].dtype)
     
     
 @register_numpy_compute("LogSoftmax")
