@@ -104,86 +104,77 @@ def mul_scalar(inputs, attrs):
 
 @register_numpy_compute("EWiseDiv")
 def divide(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return (inputs[0] / inputs[1]).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("DivScalar")
 def divide_scalar(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return (inputs[0] / attrs["scalar"]).astype(inputs[0].dtype)
 
 @register_numpy_compute("PowerScalar")
 def power_scalar(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return np.power(inputs[0], attrs["scalar"]).astype(inputs[0].dtype)
 
 @register_numpy_compute("MatMul")
 def matmul(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return (inputs[0] @ inputs[1]).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("Summation")
 def summation(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return np.sum(inputs[0], axis=attrs["axes"]).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("BroadcastTo")
 def broadcast_to(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return np.broadcast_to(inputs[0], attrs["shape"]).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("Reshape")
 def reshape(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return (inputs[0].reshape(attrs["shape"])).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("Negate")
 def negate(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return -inputs[0]
 
 
 @register_numpy_compute("Transpose")
 def transpose(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    to_reverse = attrs["axes"]
+    if to_reverse is None:
+        to_reverse = (-1, -2)
+    axes = np.arange(len(inputs[0].shape))
+    axes[to_reverse[0]], axes[to_reverse[1]] = axes[to_reverse[1]], axes[to_reverse[0]]
+    return np.transpose(inputs[0], axes=axes).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("Log")
 def log(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return np.log(inputs[0]).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("Exp")
 def exp(inputs, attrs):
-    return np.exp(inputs[0])
+    return np.exp(inputs[0]).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("ReLU")
 def relu(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    return np.maximum(inputs[0], 0)
+
+@register_numpy_compute("ReLUGrad")
+def relu(inputs, attrs):
+    result = np.ones_like(inputs[0])
+    result[np.where(inputs[0] <= 0)] = 0
+    return result
     
     
 @register_numpy_compute("LogSoftmax")
 def logsoftmax(inputs, attrs):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    x = inputs[0]
+    exp_x = np.exp(inputs[0])
+    exp_x_sum = np.sum(exp_x, axis=-1).reshape(-1,1)
+    x_max = np.max(x, axis=-1).reshape(-1, 1)
+    return (x - x_max - np.log(np.sum(np.exp(x-x_max), axis=-1)).reshape(-1,1)).astype(inputs[0].dtype)

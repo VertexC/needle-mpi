@@ -163,9 +163,8 @@ class PowerScalarOp(Op):
         return Tensor.make_from_op(self, [a], attrs={"scalar": scalar})
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        scalar = node.attrs["scalar"]
+        return [out_grad * scalar * power_scalar(node.inputs[0], scalar-1)]
         
 power_scalar = register_op("PowerScalar", PowerScalarOp())
 
@@ -177,9 +176,8 @@ class EWiseDivOp(Op):
         return Tensor.make_from_op(self, [a, b])
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        x, y = node.inputs
+        return [out_grad * ones_like(x) / y, -out_grad * x / (y*y)]
 
 
 divide = register_op("EWiseDiv", EWiseDivOp())
@@ -190,9 +188,8 @@ class DivScalarOp(Op):
         return Tensor.make_from_op(self, [a], attrs={"scalar": scalar})
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        x = node.inputs[0]
+        return [out_grad * ones_like(x) / node.attrs["scalar"]]
 
 
 divide_scalar = register_op("DivScalar", DivScalarOp())
@@ -203,9 +200,14 @@ class MatMulOp(Op):
         return Tensor.make_from_op(self, [a, b])
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        x, y = node.inputs
+        diff = len(x.shape) - len(y.shape)
+        if diff < 0:
+            return [summation(matmul(out_grad, transpose(y)), axes=tuple(np.arange(-diff).tolist())), matmul(transpose(x), out_grad)]
+        elif diff > 0:
+            return [matmul(out_grad, transpose(y)), summation(matmul(transpose(x), out_grad), axes=tuple(np.arange(diff).tolist()))]
+        else:
+            return [matmul(out_grad, transpose(y)), matmul(transpose(x), out_grad)]
 
 
 matmul = register_op("MatMul", MatMulOp())
@@ -216,9 +218,14 @@ class SummationOp(Op):
         return Tensor.make_from_op(self, [a], attrs={"axes": axes})
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        temp_shape = list(node.inputs[0].shape)
+        if node.attrs["axes"] is None:
+            temp_shape = [1]
+        else:
+            for axis in node.attrs["axes"]:
+                temp_shape[axis] = 1
+
+        return [broadcast_to(reshape(out_grad, tuple(temp_shape)), node.inputs[0].shape)]
 
 
 summation = register_op("Summation", SummationOp())
@@ -229,10 +236,19 @@ class BroadcastToOp(Op):
         return Tensor.make_from_op(self, [a], attrs={"shape": shape})
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        out_shape = out_grad.shape
+        in_shape = node.inputs[0].shape
+        reduce_sum_axes = []
+        i = 1
+        while i < len(in_shape)+1:
+            if out_shape[-i] > in_shape[-i]:
+                reduce_sum_axes.append(-i)
+            i += 1
+                
+        for j in range(0, len(out_shape)-i+1):
+            reduce_sum_axes.append(j)
+        result = reshape(summation(out_grad, axes=tuple(reduce_sum_axes)), in_shape)
+        return [result]
 
 broadcast_to = register_op("BroadcastTo", BroadcastToOp())
 
@@ -242,9 +258,7 @@ class ReshapeOp(Op):
         return Tensor.make_from_op(self, [a], attrs={"shape": shape})
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return [reshape(out_grad, node.inputs[0].shape)]
 
 
 reshape = register_op("Reshape", ReshapeOp())
@@ -255,9 +269,7 @@ class NegateOp(Op):
         return Tensor.make_from_op(self, [a])
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return [out_grad * negate(ones_like(node.inputs[0]))]
 
 
 negate = register_op("Negate", NegateOp())
@@ -268,10 +280,7 @@ class TransposeOp(Op):
         return Tensor.make_from_op(self, [a], attrs={"axes": axes})
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        return [transpose(out_grad, node.attrs["axes"])]
 
 transpose = register_op("Transpose", TransposeOp())
 
@@ -281,9 +290,8 @@ class LogOp(Op):
         return Tensor.make_from_op(self, [a])
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        x = node.inputs[0]
+        return [out_grad * ones_like(x) / x]
 
 
 log = register_op("Log", LogOp())
@@ -299,14 +307,21 @@ class ExpOp(Op):
 
 exp = register_op("Exp", ExpOp())
 
+class ReLuGradOp(Op):
+    def __call__(self, a: Tensor) -> Tensor:
+        return Tensor.make_from_op(self, [a])
+
+    def gradient(self, out_grad, node):
+        return [zeros_like(node.inputs[0])]
+
+relu_grad = register_op("ReLUGrad", ReLuGradOp())
+
 class ReLUOp(Op):
     def __call__(self, a: Tensor) -> Tensor:
         return Tensor.make_from_op(self, [a])
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return [out_grad * relu_grad(node.inputs[0])]
 
 relu = register_op("ReLU", ReLUOp())
 
@@ -314,10 +329,11 @@ class LogSoftmaxOp(Op):
     def __call__(self, x: Tensor) -> Tensor:
         return Tensor.make_from_op(self, [x])
 
+    # reference: https://stackoverflow.com/questions/35304393/trying-to-understand-code-that-computes-the-gradient-wrt-to-the-input-for-logsof
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        x = node.inputs[0]
+        E_x = exp(logsoftmax(x))
+        return [out_grad - E_x * reshape(summation(out_grad, axes=tuple([-1])), tuple([-1,1]))]
 
 logsoftmax = register_op("LogSoftmax", LogSoftmaxOp())
 
