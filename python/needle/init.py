@@ -48,7 +48,6 @@ def kaiming_normal(x, mode='fan_in', nonlinearity='relu'):
     std = gain / math.sqrt(fan_mode)
     normal(x, mean=0, std=std)
 
-
 def _calculate_fans(x):
     ### BEGIN YOUR SOLUTION
     raise NotImplementedError()

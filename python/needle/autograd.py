@@ -207,6 +207,10 @@ class Tensor(Value):
     def data(self):
         return self.detach()
 
+    @property
+    def T(self):
+        return needle.ops.transpose(self)
+
     @data.setter
     def data(self, value):
         assert isinstance(value, Tensor)
@@ -287,6 +291,10 @@ class Tensor(Value):
 
     def transpose(self, axes=None):
         return needle.ops.transpose(self, axes)
+    
+    @property
+    def T(self):
+        return needle.ops.transpose(self)
 
     __radd__ = __add__
     __rmul__ = __mul__
@@ -307,7 +315,7 @@ def compute_gradient_of_variables(output_tensor, out_grad):
 
     # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
     reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
-
+    print(reverse_topo_order)
     def tensors_sum(tensors):
         result = needle.ops.zeros_like(tensors[0])
         for tensor in tensors:
@@ -316,10 +324,15 @@ def compute_gradient_of_variables(output_tensor, out_grad):
     for node in reverse_topo_order:
         grad = tensors_sum(node_to_output_grads_list[node])
         node.grad = grad
+    
         if node.op is None:
             continue
+        print("Computing grad for: {}".format(node.op))
+        
         grads = node.op.gradient(grad, node)
         for i, input_node in enumerate(node.inputs):
+            if input_node.shape != grads[i].shape:
+                print("mismatch on:", node.op)
             if input_node not in node_to_output_grads_list:
                 node_to_output_grads_list[input_node] = [grads[i]]
             else:

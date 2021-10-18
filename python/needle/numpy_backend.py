@@ -125,7 +125,12 @@ def matmul(inputs, attrs):
 
 @register_numpy_compute("Summation")
 def summation(inputs, attrs):
-    return np.sum(inputs[0], axis=attrs["axes"]).astype(inputs[0].dtype)
+    # print([len(inputs[0].shape), attrs["axes"])
+    if attrs["axes"] is None:
+        axes = None
+    else:
+        axes = tuple([len(inputs[0].shape)+i if i < 0 else i for i in attrs["axes"] ])
+    return np.sum(inputs[0], axis=axes).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("BroadcastTo")
@@ -146,6 +151,8 @@ def negate(inputs, attrs):
 @register_numpy_compute("Transpose")
 def transpose(inputs, attrs):
     to_reverse = attrs["axes"]
+    if len(inputs[0].shape) == 1:
+        return inputs[0]
     if to_reverse is None:
         to_reverse = (-1, -2)
     axes = np.arange(len(inputs[0].shape))

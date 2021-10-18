@@ -5,6 +5,7 @@ from typing import Optional, List
 import numpy as np
 from .autograd import Op, Tensor, Value, Tuple
 from .device import default_device
+import copy
 
 OP_TABLE = {}
 
@@ -224,7 +225,6 @@ class SummationOp(Op):
         else:
             for axis in node.attrs["axes"]:
                 temp_shape[axis] = 1
-
         return [broadcast_to(reshape(out_grad, tuple(temp_shape)), node.inputs[0].shape)]
 
 
@@ -247,6 +247,7 @@ class BroadcastToOp(Op):
                 
         for j in range(0, len(out_shape)-i+1):
             reduce_sum_axes.append(j)
+        print("broadcast reshape", summation(out_grad, axes=tuple(reduce_sum_axes)).shape, in_shape)
         result = reshape(summation(out_grad, axes=tuple(reduce_sum_axes)), in_shape)
         return [result]
 
@@ -360,10 +361,26 @@ def one_hot(labels: Tensor, *, num_classes=10, dtype="float32", device=None):
     arr = device.one_hot(labels.numpy(), num_classes=num_classes)
     return Tensor.make_const(arr, device, requires_grad=False)
 
+def mean(a:Tensor, *, axes: Optional[tuple] = None, keep_dim=False):
+    divide_scalar = 1
+    
+    if axes is None:
+        axes = [i for i in range(len(a.shape))]
+    for axis in axes:
+        divide_scalar *= a.shape[axis]
+    out = summation(a, axes=axes) / divide_scalar
+    if keep_dim:
+        keep_shape = list(a.shape)
+        for axis in axes:
+            keep_shape[axis] = 1
+        out = reshape(out, tuple(keep_shape))
+    return out
 
 def zeros(shape, *, dtype="float32", device=None, requires_grad=False):
     return full(shape, 0, dtype=dtype, device=device, requires_grad=requires_grad)
 
+def ones(shape, *, dtype="float32", device=None, requires_grad=False):
+    return full(shape, 1, dtype=dtype, device=device, requires_grad=requires_grad)
 
 def randn(shape, *, mean=0.0, std=1.0, dtype="float32", device=None, requires_grad=False):
     return full(shape, 0, rand={'dist': 'normal', 'mean': mean, 'std': std}, dtype=dtype, device=device, requires_grad=requires_grad)
