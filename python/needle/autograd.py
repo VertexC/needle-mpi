@@ -315,7 +315,6 @@ def compute_gradient_of_variables(output_tensor, out_grad):
 
     # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
     reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
-    print(reverse_topo_order)
     def tensors_sum(tensors):
         result = needle.ops.zeros_like(tensors[0])
         for tensor in tensors:
@@ -327,12 +326,15 @@ def compute_gradient_of_variables(output_tensor, out_grad):
     
         if node.op is None:
             continue
-        print("Computing grad for: {}".format(node.op))
-        
+        # print("Computing grad for: {}".format(node.op))
         grads = node.op.gradient(grad, node)
         for i, input_node in enumerate(node.inputs):
             if input_node.shape != grads[i].shape:
-                print("mismatch on:", node.op)
+                print("shape mismatch on:", node.op)
+            if input_node.dtype != grads[i].dtype:
+                # print("dtype mismatch on:", node.op, input_node.dtype, grads[i].dtype)
+                # grads[i] = needle.ops.ones_like(input_node.data) * grads[i]
+                pass
             if input_node not in node_to_output_grads_list:
                 node_to_output_grads_list[input_node] = [grads[i]]
             else:

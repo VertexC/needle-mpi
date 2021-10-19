@@ -24,10 +24,16 @@ class SGD(Optimizer):
         self.weight_decay = weight_decay
 
     def step(self):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        for param in self.params:
+            if param.requires_grad:
+                detached_param_data = param.data
+                new_grad = param.grad.data + self.weight_decay*detached_param_data
+                if param not in self.delta:
+                    self.delta[param] = new_grad
+                else:
+                    self.delta[param] = self.momentum * self.delta[param] + new_grad
+                grad = self.delta[param]
+                param.data = detached_param_data - self.lr*grad
 
 
 class Adam(Optimizer):
@@ -41,10 +47,30 @@ class Adam(Optimizer):
         self.bias_correction = bias_correction
         self.t = 0
 
-        self.m = {}
+        self.u = {}
         self.v = {}
 
     def step(self):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        self.t += 1
+        # import pdb; pdb.set_trace()
+        for i, param in enumerate(self.params):
+            if param.requires_grad:
+                # import pdb; pdb.set_trace()
+                detached_param_data = param.data
+                new_grad = param.grad.data + self.weight_decay*detached_param_data
+                if i not in self.u:
+                    self.u[i] = (1-self.beta1)*new_grad
+                else:
+                    self.u[i] = self.beta1*self.u[i] + (1-self.beta1)*new_grad
+                
+                if i not in self.v:
+                    self.v[i] = (1-self.beta2)*new_grad**2
+                else:
+                    self.v[i] = self.beta2*self.v[i] + (1-self.beta2)*(new_grad**2)
+                if self.bias_correction:
+                    u_hat = self.u[i] / (1-self.beta1**self.t)
+                    v_hat = self.v[i] / (1-self.beta2**self.t)
+                else:
+                    u_hat = self.u[i]
+                    v_hat = self.v[i]
+                param.data = detached_param_data - self.lr*u_hat/(v_hat**0.5+self.eps)

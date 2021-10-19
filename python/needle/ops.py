@@ -115,6 +115,7 @@ fused_add_scalars = register_op("FusedAddScalars", FusedAddScalarsOp())
 
 class EWiseAddOp(Op):
     def __call__(self, a: Tensor, b: Tensor) -> Tensor:
+        assert a.shape == b.shape
         return Tensor.make_from_op(self, [a, b])
 
     def gradient(self, out_grad, node):
@@ -139,6 +140,7 @@ class EWiseMulOp(Op):
     """Op to element-wise multiply two nodes."""
 
     def __call__(self, a: Tensor, b: Tensor) -> Tensor:
+        assert a.shape == b.shape
         return Tensor.make_from_op(self, [a, b])
 
     def gradient(self, out_grad, node):
@@ -247,7 +249,7 @@ class BroadcastToOp(Op):
                 
         for j in range(0, len(out_shape)-i+1):
             reduce_sum_axes.append(j)
-        print("broadcast reshape", summation(out_grad, axes=tuple(reduce_sum_axes)).shape, in_shape)
+        # print("broadcast reshape", summation(out_grad, axes=tuple(reduce_sum_axes)).shape, in_shape)
         result = reshape(summation(out_grad, axes=tuple(reduce_sum_axes)), in_shape)
         return [result]
 
@@ -334,7 +336,9 @@ class LogSoftmaxOp(Op):
     def gradient(self, out_grad, node):
         x = node.inputs[0]
         E_x = exp(logsoftmax(x))
-        return [out_grad - E_x * reshape(summation(out_grad, axes=tuple([-1])), tuple([-1,1]))]
+        rhs = reshape(summation(out_grad, axes=tuple([-1])), tuple([-1,1]))
+        rhs = broadcast_to(rhs, E_x.shape)
+        return [out_grad - E_x * rhs]
 
 logsoftmax = register_op("LogSoftmax", LogSoftmaxOp())
 

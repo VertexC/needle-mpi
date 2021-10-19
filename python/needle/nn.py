@@ -13,7 +13,7 @@ class Parameter(Tensor):
     """
 
 def _unpack_params(value: object) -> List[Tensor]:
-    if isinstance(value, Parameter):
+    if isinstance(value, Tensor):
         return [value]
     elif isinstance(value, Module):
         return value.parameters()
@@ -32,7 +32,6 @@ def _unpack_params(value: object) -> List[Tensor]:
 
 def _child_modules(value: object) -> List[Module]:
     child_modules = []
-    print(value)
     for k, v in value.items():
         if isinstance(v, Module):
             child_modules.append(v)
@@ -84,7 +83,10 @@ class Linear(Module):
         self.bias = ops.randu(out_features, low=-k, high=k, dtype=dtype, device=device, requires_grad=True)
 
     def forward(self, x: Tensor)-> Tensor:
-        return ops.matmul(x, self.weight) + self.bias  
+        out = ops.matmul(x, self.weight)
+        out += ops.broadcast_to(self.bias, out.shape)
+        assert out.dtype == x.dtype
+        return out
 
 
 class ReLU(Module):
@@ -92,7 +94,9 @@ class ReLU(Module):
         super().__init__()
 
     def forward(self, x: Tensor) -> Tensor:
-        return ops.relu(x)
+        out = ops.relu(x)
+        assert out.dtype == x.dtype
+        return out
 
 class Sequential(Module):
     def __init__(self, *modules, device=None, dtype="float32"):
@@ -100,9 +104,12 @@ class Sequential(Module):
         self.modules = modules
 
     def forward(self, x: Tensor) -> Tensor:
+        out = x
         for module in self.modules:
-            x = module(x)
-        return x
+            out = module(out)
+        # assert out.dtype == x.dtype
+        return out
+        
 
 class SoftmaxLoss(Module):
     def __init__(self, device=None, dtype="float32"):
@@ -111,7 +118,7 @@ class SoftmaxLoss(Module):
     def forward(self, x: Tensor, y: Tensor):
         num_classes = x.shape[-1]
         samples = x.shape[0]
-        return -ops.summation(ops.multiply(ops.logsoftmax(x), ops.one_hot(y, num_classes=num_classes))) / samples
+        return -ops.summation(ops.multiply(ops.logsoftmax(x), ops.broadcast_to(ops.one_hot(y, num_classes=num_classes), x.shape))) / samples
 
 
 class BatchNorm(Module):
@@ -139,8 +146,8 @@ class BatchNorm(Module):
         if self.training:
             out = (weight * eval_diff) / ops.broadcast_to(ops.power_scalar(x_var + self.eps, 0.5), eval_diff.shape) + bias
         else:
-            train_diff = x - ops.broadcast_to(ops.reshape(self.running_mean, x_mean), x.shape)
-            out = (weight * train_diff) / ops.broadcast_to(ops.power_scalar(ops.reshape(self.running_var, x_var) + self.eps, 0.5), train_diff.shape) + bias
+            train_diff = x - ops.broadcast_to(ops.reshape(self.running_mean, x_mean.shape), x.shape)
+            out = (weight * train_diff) / ops.broadcast_to(ops.power_scalar(ops.reshape(self.running_var, x_var.shape) + self.eps, 0.5), train_diff.shape) + bias
             
         
         self.running_mean = self.running_mean * (1-self.momentum) + self.momentum*ops.reshape(x_mean, self.running_mean.shape)  
@@ -165,12 +172,13 @@ class LayerNorm(Module):
         
     def forward(self, x: Tensor) -> Tensor:
         z = x
-        z_hat = z * self.weight + self.bias
         axes = tuple([-1-i for i in range(len(self.dims))])
-        z_mean = ops.mean(z_hat, axes=axes, keep_dim=True)
-        diff = z_hat - ops.broadcast_to(z_mean, z_hat.shape)
+        z_mean = ops.mean(z, axes=axes, keep_dim=True)
+        diff = z - ops.broadcast_to(z_mean, z.shape)
         z_var = ops.mean(diff**2, axes=axes, keep_dim=True)
-        out = diff / ops.broadcast_to(ops.power_scalar(z_var + self.eps, 0.5), diff.shape)
+        weight = ops.broadcast_to(self.weight, z.shape)
+        bias = ops.broadcast_to(self.bias, z.shape)
+        out = (weight * diff) / ops.broadcast_to(ops.power_scalar(z_var + self.eps, 0.5), diff.shape) + bias
         return out
 
 

@@ -28,9 +28,6 @@ class NumpyDevice(Device):
         arr.fill(fill_value)
         return arr
 
-    def fill_array(self, arr, other):
-        arr[:] = other[:]
-
     def randn(self, shape, dtype, mean=0.0, std=1.0):
         return np.random.normal(loc=mean, scale=std, size=shape).astype(dtype)
     
@@ -140,12 +137,14 @@ def broadcast_to(inputs, attrs):
 
 @register_numpy_compute("Reshape")
 def reshape(inputs, attrs):
+    if len(attrs["shape"]) == 0:
+        return (np.sqeeze(inputs[0]).astype(inputs[0].dtype))
     return (inputs[0].reshape(attrs["shape"])).astype(inputs[0].dtype)
 
 
 @register_numpy_compute("Negate")
 def negate(inputs, attrs):
-    return -inputs[0]
+    return -inputs[0].astype(inputs[0].dtype)
 
 
 @register_numpy_compute("Transpose")
