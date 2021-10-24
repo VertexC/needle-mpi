@@ -12,10 +12,11 @@ class Parameter(Tensor):
     """A special kind of tensor that represents parameters.
     """
 
-def _unpack_params(value: object) -> List[Tensor]:
-    if isinstance(value, Tensor):
+def _unpack_params(value: object) -> List[Parameter]:
+    if isinstance(value, Parameter):
         return [value]
     elif isinstance(value, Module):
+        # print(value, [p.shape for p in value.parameters()])
         return value.parameters()
     elif isinstance(value, dict):
         params = []
@@ -36,12 +37,12 @@ def _child_modules(value: object) -> List[Module]:
         if isinstance(v, Module):
             child_modules.append(v)
             child_modules += v._children()
-        if isinstance(v, list) or isinstance(v, tuple):
+        elif isinstance(v, list) or isinstance(v, tuple):
             for a in v:
                 if isinstance(a, Module):
                     child_modules.append(a)
                     child_modules += a._children()
-        if isinstance(v, dict):
+        elif isinstance(v, dict):
             child_modules += _child_modules(v)
     return child_modules
 
@@ -79,8 +80,8 @@ class Linear(Module):
         self.in_features = in_features
         self.out_features = out_features
         k = np.sqrt(1.0/in_features)
-        self.weight = ops.randu((in_features, out_features), low=-k, high=k, dtype=dtype, device=device, requires_grad=True)
-        self.bias = ops.randu(out_features, low=-k, high=k, dtype=dtype, device=device, requires_grad=True)
+        self.weight = Parameter(ops.randu((in_features, out_features), low=-k, high=k, dtype=dtype, device=device, requires_grad=True))
+        self.bias = Parameter(ops.randu(out_features, low=-k, high=k, dtype=dtype, device=device, requires_grad=True))
 
     def forward(self, x: Tensor)-> Tensor:
         out = ops.matmul(x, self.weight)
@@ -107,7 +108,7 @@ class Sequential(Module):
         out = x
         for module in self.modules:
             out = module(out)
-        # assert out.dtype == x.dtype
+            # print(module, out.numpy().flatten()[:10])
         return out
         
 
@@ -129,8 +130,8 @@ class BatchNorm(Module):
         self.momentum = momentum
         self.training = True
 
-        self.weight = ops.ones(dim, dtype=dtype, device=device, requires_grad=True) 
-        self.bias = ops.zeros(dim, dtype=dtype, device=device, requires_grad=True) 
+        self.weight = Parameter(ops.ones(dim, dtype=dtype, device=device, requires_grad=True))
+        self.bias = Parameter(ops.zeros(dim, dtype=dtype, device=device, requires_grad=True))
         
         self.running_mean = ops.zeros(dim, dtype=dtype, device=device, requires_grad=False) 
         self.running_var = ops.ones(dim, dtype=dtype, device=device, requires_grad=False)
@@ -149,14 +150,14 @@ class BatchNorm(Module):
             train_diff = x - ops.broadcast_to(ops.reshape(self.running_mean, x_mean.shape), x.shape)
             out = (weight * train_diff) / ops.broadcast_to(ops.power_scalar(ops.reshape(self.running_var, x_var.shape) + self.eps, 0.5), train_diff.shape) + bias
             
-        
-        self.running_mean = self.running_mean * (1-self.momentum) + self.momentum*ops.reshape(x_mean, self.running_mean.shape)  
-        
-        dims = 1
-        for axis in axes:
-            dims *= x.shape[axis]
-        running_var = x_var * dims / (dims-1)
-        self.running_var = self.running_var * (1-self.momentum) + self.momentum*ops.reshape(running_var, self.running_var.shape)  
+        if self.training:
+            self.running_mean = self.running_mean * (1-self.momentum) + self.momentum*ops.reshape(x_mean, self.running_mean.shape)  
+            
+            dims = 1
+            for axis in axes:
+                dims *= x.shape[axis]
+            running_var = x_var * dims / (dims-1)
+            self.running_var = self.running_var * (1-self.momentum) + self.momentum*ops.reshape(running_var, self.running_var.shape)  
         return out
         
         
@@ -167,8 +168,8 @@ class LayerNorm(Module):
         super().__init__()
         self.dims = dims if isinstance(dims, tuple) else (dims,)
         self.eps = eps
-        self.weight = ops.ones(dims, dtype=dtype, device=device, requires_grad=True) 
-        self.bias = ops.zeros(dims, dtype=dtype, device=device, requires_grad=True)
+        self.weight = Parameter(ops.ones(dims, dtype=dtype, device=device, requires_grad=True))
+        self.bias = Parameter(ops.zeros(dims, dtype=dtype, device=device, requires_grad=True))
         
     def forward(self, x: Tensor) -> Tensor:
         z = x
@@ -192,7 +193,8 @@ class Dropout(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         if self.training:
-            return x * (ops.ones_like(x, device=self.device)-ops.randb(x.shape, n=1, p=self.p, dtype=self.dtype, device=self.device)) / (1.0 - self.p + self.eps)
+            mask = ops.randb(x.shape, n=1, p=1-self.p, dtype=self.dtype, device=self.device)
+            return x * mask / (1.0 - self.p + self.eps)
         else:
             return x
 

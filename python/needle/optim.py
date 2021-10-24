@@ -52,10 +52,8 @@ class Adam(Optimizer):
 
     def step(self):
         self.t += 1
-        # import pdb; pdb.set_trace()
         for i, param in enumerate(self.params):
             if param.requires_grad:
-                # import pdb; pdb.set_trace()
                 detached_param_data = param.data
                 new_grad = param.grad.data + self.weight_decay*detached_param_data
                 if i not in self.u:
@@ -73,4 +71,9 @@ class Adam(Optimizer):
                 else:
                     u_hat = self.u[i]
                     v_hat = self.v[i]
+                print(i, param.grad.data.numpy().flatten()[:10])
+                print(i, param.data.numpy().flatten()[:10])
+                print(i, u_hat.numpy().flatten()[:10])
+                print(i, v_hat.numpy().flatten()[:10])
+                print()
                 param.data = detached_param_data - self.lr*u_hat/(v_hat**0.5+self.eps)

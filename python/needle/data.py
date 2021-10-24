@@ -2,7 +2,9 @@ import numpy as np
 from .autograd import Tensor
 
 from typing import Iterator, Optional, List, Sized, Union, Iterable, Any
-
+import copy
+import struct
+import gzip
 
 class Transform:
 
@@ -15,19 +17,35 @@ class FlipHorizontal(Transform):
         pass
 
     def __call__(self, img):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        w = int(np.sqrt(img.shape[0]))
+        for i in range(w):
+            base = i*w
+            bound = (i+1)*w
+            img[base:bound] = img[base:bound][::-1]
+        return img
 
 class RandomCrop(Transform):
     def __init__(self, padding=3):
         self.padding = padding
 
     def __call__(self, _x):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        w = int(np.sqrt(_x.shape[0]))
+        new_w = w+2*self.padding
+        new_img = np.zeros(new_w * new_w)
+        # paste origin image
+        for i in range(w):
+            new_img[(i+self.padding)*new_w+self.padding:(i+self.padding+1)*new_w-self.padding] = _x[i*w:(i+1)*w]
+        # select a crop point
+        x = np.random.randint(0, self.padding*2)
+        y = np.random.randint(0, self.padding*2)
+        x, y = y, x
+        # crop
+        print(x, y)
+        crop_img = np.zeros(w * w)
+        for i in range(y, y+w):
+            base = x+i*new_w
+            crop_img[(i-y)*w:(i-y+1)*w] = new_img[base:base+w] 
+        return crop_img
 
 class Sampler:
     """Base class for all Samplers.
@@ -54,14 +72,10 @@ class SequentialSampler(Sampler):
         self.data_source = data_source
 
     def __iter__(self) -> Iterator[int]:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return iter([i for i in range(len(self.data_source))])
 
     def __len__(self) -> int:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return len(self.data_source)
 
 
 class RandomSampler(Sampler):
@@ -94,14 +108,13 @@ class RandomSampler(Sampler):
             self.num_samples = len(data_source)
 
     def __iter__(self) -> Iterator[int]:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        if not self.replacement:
+            return iter(np.random.permutation(self.num_samples))
+        else:
+            return iter([np.random.randint(0, self.num_samples) for _ in range(self.num_samples)]) 
 
     def __len__(self) -> int:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return self.num_samples
 
 
 class BatchSampler(Sampler):
@@ -134,25 +147,37 @@ class BatchSampler(Sampler):
         self.drop_last = drop_last
 
     def __iter__(self) -> Iterator[List[int]]:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
+        result = []
+        batch = []
+        for sample in self.sampler:
+            batch.append(sample)
+            if len(batch) == self.batch_size:
+                result.append(batch)
+                batch = []
+        if len(batch) > 0 and not self.drop_last:
+            result.append(batch)
+        return iter(result)
     def __len__(self) -> int:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return len(self.sampler) // self.batch_size + 1 if len(self.sampler) % self.batch_size > 0 and not self.drop_last else  len(self.sampler) // self.batch_size
 
 
 def default_collate():
     r"""Puts each data field into a tensor with outer dimension batch size"""
-    raise NotImplementedError
+    return collate_mnist
 
 
 def collate_mnist(batch):
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    if isinstance(batch, list):
+        data_batch = [pair[0] for pair in batch]
+        label_batch = [pair[1] for pair in batch]
+    if isinstance(batch, tuple):
+        data_batch = [batch[0]]
+        label_batch = [batch[1]]
+    data_batch = np.asarray(data_batch)
+    label_batch = np.asarray(label_batch)
+    data_batch = data_batch if data_batch.shape[0] > 1 else data_batch.reshape(-1)
+    label_batch = label_batch if label_batch.shape[0] > 1 else label_batch.reshape(-1)
+    return Tensor(data_batch, dtype="float64"), Tensor(label_batch, dtype="uint8")
 
 
 class Dataset:
@@ -352,9 +377,15 @@ class _IterableDatasetFetcher(_BaseDatasetFetcher):
         self.ended = False
 
     def fetch(self, possibly_batched_index):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        result = []
+        if isinstance(possibly_batched_index, list):
+            for index in possibly_batched_index:
+                result.append(self.dataset[index])
+        if isinstance(possibly_batched_index, int):
+            result.append(self.dataset[possibly_batched_index])
+        collated_result = self.collate_fn(result)
+        return collated_result
+                
 
 
 def parse_mnist(image_filename, label_filename):
@@ -372,13 +403,48 @@ def parse_mnist(image_filename, label_filename):
                 will be 784.  Values should be of type np.float32, and the data
                 should be normalized to have a minimum value of 0.0 and a
                 maximum value of 1.0.
-            y (numpy.ndarray[dypte=np.int8]): 1D numpy array containing the
-                labels of the examples.  Values should be of type np.int8 and
+            y (numpy.ndarray[dypte=np.uint8]): 1D numpy array containing the
+                labels of the examples.  Values should be of type np.uint8 and
                 for MNIST will contain the values 0-9.
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    def get_images(image_content, images, rows, cols):
+        image_data = np.zeros((images, rows*cols), dtype=np.uint8)
+        for image in range(images):
+            for row in range(rows):
+                for col in range(cols):
+                    cur = image*rows*cols+row*cols+col
+                    image_data[image, row*cols+col] = struct.unpack('B', image_content[cur:cur+1])[0]
+        return image_data
+    
+    def get_labels(label_content, labels):
+        label_data = np.zeros((labels), dtype=np.uint8)
+        for label in range(labels):
+            label_data[label] = struct.unpack('B', label_content[label:label+1])[0]
+        return label_data
+            
+    
+    # process images
+    image_f = gzip.open(image_filename,'rb')
+    image_content = image_f.read()
+    magic_num = struct.unpack('i', image_content[:4][::-1])[0]
+    images = struct.unpack('i', image_content[4:8][::-1])[0]
+    rows = struct.unpack('i', image_content[8:12][::-1])[0]
+    cols = struct.unpack('i', image_content[12:16][::-1])[0]
+    # print(magic_num, images, rows, cols)
+    image_data = get_images(image_content[16:], images, rows, cols)
+    
+    # process labels
+    label_f = gzip.open(label_filename, 'rb')
+    label_content = label_f.read()
+    magic_num = struct.unpack('i', label_content[:4][::-1])[0]
+    labels = struct.unpack('i', label_content[4:8][::-1])[0]
+    # print(magic_num, labels)
+    label_data = get_labels(label_content[8:], labels)
+    
+    normalized_image_data = image_data / 255.0
+    normalized_image_data = normalized_image_data.astype(np.float32)
+
+    return normalized_image_data, label_data
 
 
 class MNISTDataset(Dataset):
@@ -387,16 +453,13 @@ class MNISTDataset(Dataset):
                  label_filename: str,
                  p: Optional[int] = 0.5,
                  transforms: Optional[List] = None):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        super(MNISTDataset, self).__init__(p, transforms)
+        self.img_data, self.label_data = parse_mnist(image_filesname, label_filename)
 
     def __getitem__(self, index) -> object:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        img = self.img_data[index, :]
+        label = self.label_data[index]
+        return self.apply_transforms(img), label
 
     def __len__(self) -> int:
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        return len(self.label_data)
